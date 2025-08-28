@@ -15,11 +15,13 @@ namespace CICDMinimalAPIDemo.Tests
         public void GetGreetingTest()
         {
             //Arrange
-
+            var greetingService = new GreetingService("Test");
+            
             //Act
+            var actualGreeting = greetingService.GetGreeting();
 
             //Assert
-            Assert.Fail();
+            Assert.AreEqual("Hello Test!", actualGreeting);
         }
     }
 }
