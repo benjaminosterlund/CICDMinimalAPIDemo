@@ -44,13 +44,13 @@ jobs:
       continue-on-error: true
       run: |
         mkdir -p artifacts/coverage  
-        dotnet coverage collect "dotnet test ${{ env.SOLUTION_FILE }} -c Debug --no-build --settings eng/tests.runsettings" artifacts/bin/${{ env.TEST_PROJECT_NAME }}/debug/${{ env.TEST_PROJECT_NAME }} --output ${{ env.COVERAGE_FILE }} --output-format cobertura --settings eng/tests.runsettings
+        dotnet coverage collect artifacts/bin/${{ env.TEST_PROJECT_NAME }}/debug/${{ env.TEST_PROJECT_NAME }} --output ${{ env.COVERAGE_FILE }} --output-format cobertura --settings eng/tests.runsettings
 
     - name: Generate Coverage Report
       if: always()      
       run: |
-        reportgenerator -reports:${{ env.COVERAGE_FILE }} -targetdir:artifacts/coverage -reporttypes:Cobertura -filefilter:-*.g.cs -assemblyfilters:-*.Tests
-        reportgenerator -reports:${{ env.COVERAGE_FILE }} -targetdir:artifacts/coverage-report -reporttypes:Html -filefilter:-*.g.cs -assemblyfilters:-*.Tests
+        reportgenerator -reports:${{ env.COVERAGE_FILE }} -targetdir:artifacts/coverage -reporttypes:Cobertura -filefilters:-*.g.cs -assemblyfilters:-*.Tests
+        reportgenerator -reports:${{ env.COVERAGE_FILE }} -targetdir:artifacts/coverage-report -reporttypes:Html -filefilters:-*.g.cs -assemblyfilters:-*.Tests
     
 
     - name: Ensure PowerShell is installed
