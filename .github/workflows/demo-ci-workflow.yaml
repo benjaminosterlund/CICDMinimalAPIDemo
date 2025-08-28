@@ -1,0 +1,215 @@
+name: Continous Integration
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate:
+
+    runs-on: ubuntu-latest
+
+    env:
+      SOLUTION_FILE: CICDMinimalAPIDemo.sln
+      TEST_PROJECT_NAME: CICDMinimalAPIDemoTests
+      COVERAGE_FILE: artifacts/bin/CICDMinimalAPIDemoTests/debug/CICDMinimalAPIDemoTests.coverage
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.x
+    - name: Install ReportGenerator and CodeCoverage
+      run: |
+        # Install the tools globally into ~/.dotnet/tools
+        dotnet tool install --global dotnet-reportgenerator-globaltool
+        dotnet tool install --global dotnet-coverage   
+        
+        # Add ~/.dotnet/tools to PATH for all following steps in this job
+        echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.SOLUTION_FILE }}
+    - name: Build
+      run: dotnet build --no-restore ${{ env.SOLUTION_FILE }}
+    - name: Test
+      id: test
+      continue-on-error: true
+      run: |
+        mkdir -p artifacts/coverage  
+        dotnet coverage collect "dotnet test ${{ env.SOLUTION_FILE }} -c Debug --no-build --settings eng/tests.runsettings" artifacts/bin/${{ env.TEST_PROJECT_NAME }}/debug/${{ env.TEST_PROJECT_NAME }} --output ${{ env.COVERAGE_FILE }} --output-format cobertura --settings eng/tests.runsettings
+
+    - name: Generate Coverage Report
+      if: always()      
+      run: |
+        reportgenerator -reports:${{ env.COVERAGE_FILE }} -targetdir:artifacts/coverage -reporttypes:Cobertura -filefilter:-*.g.cs -assemblyfilters:-*.Tests
+        reportgenerator -reports:${{ env.COVERAGE_FILE }} -targetdir:artifacts/coverage-report -reporttypes:Html -filefilter:-*.g.cs -assemblyfilters:-*.Tests
+    
+
+    - name: Ensure PowerShell is installed
+      shell: bash
+      run: |
+        if ! command -v pwsh &> /dev/null
+        then
+          echo "PowerShell not found. Installing..."
+          sudo apt-get update
+          sudo apt-get install -y powershell
+        else
+          echo "PowerShell is already installed."
+        fi
+
+
+    - name: Extract Coverage Percentage
+      if: always()
+      id: coverage
+      run: |        
+        # Extract coverage percentage from the summary file
+        [xml] $x = Get-Content -Raw -LiteralPath:${{ env.COVERAGE_FILE }}
+        $lineRate = [float]$x.coverage.'line-rate'
+        $branchRate = [float]$x.coverage.'branch-rate'
+        $linePercent = "{0:N1}%" -f ($lineRate * 100)
+        $branchPercent = "{0:N1}%" -f ($branchRate * 100)
+        
+        # Debug output - use Write-Output for reliable GitHub Actions logging
+        Write-Output "Debug: lineRate = $lineRate"
+        Write-Output "Debug: linePercent = $linePercent"
+        
+        # Set outputs using proper PowerShell syntax for GitHub Actions
+        "percentage=$linePercent" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "line-rate=$lineRate" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+        echo "Coverage: $linePercent" >> $env:GITHUB_STEP_SUMMARY
+
+
+        $owner = $env:GITHUB_REPOSITORY_OWNER
+        $repo = ($env:GITHUB_REPOSITORY -split '/')[1]
+        $url = "https://$owner.github.io/$repo/"
+        
+        # Add a more detailed summary
+        echo "## 📊 Code Coverage Report" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Line Coverage:** $linePercent" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Branch Coverage:** $branchPercent" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Report:** [View detailed coverage report]($url)" >> $env:GITHUB_STEP_SUMMARY
+        echo "- **Artifacts:** Coverage data and HTML report are available as downloadable artifacts" >> $env:GITHUB_STEP_SUMMARY
+      shell: pwsh
+    
+    - name: Check Coverage Threshold
+      if: always()
+      id: threshold
+      run: |
+        $threshold = 0.95
+        
+        # Debug: Show what we're getting from the previous step - use Write-Output for reliability
+        Write-Output "Debug: Raw output from previous step: '${{ steps.coverage.outputs.line-rate }}'"
+        Write-Output "Debug: Percentage output from previous step: '${{ steps.coverage.outputs.percentage }}'"
+        
+        # Try to parse the line rate
+        $rawLineRate = "${{ steps.coverage.outputs.line-rate }}"
+        if ([string]::IsNullOrWhiteSpace($rawLineRate)) {
+          Write-Error "line-rate output is empty or null!"
+          exit 1
+        }
+        
+        try {
+          $lineRate = [float]$rawLineRate
+          $linePercent = $lineRate * 100
+        } catch {
+          Write-Error "Failed to parse line-rate '$rawLineRate' as float: $_"
+          exit 1
+        }
+        
+        Write-Output "Line Coverage: $($linePercent.ToString('F1'))%"
+        Write-Output "Required Threshold: $($threshold * 100)%"
+        
+        if ($lineRate -lt $threshold) {
+          echo "❌ **Coverage Check Failed**" >> $env:GITHUB_STEP_SUMMARY
+          echo "- Current coverage: $($linePercent.ToString('F1'))%" >> $env:GITHUB_STEP_SUMMARY
+          echo "- Required threshold: $($threshold * 100)%" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Action Required:** Please add more tests to increase coverage above 95%" >> $env:GITHUB_STEP_SUMMARY
+          
+          echo "status=failed" >> $env:GITHUB_OUTPUT
+          Write-Error "Code coverage ($($linePercent.ToString('F1'))%) is below the required threshold of $($threshold * 100)%"
+          exit 1
+        } else {
+          echo "✔ **Coverage Check Passed**" >> $env:GITHUB_STEP_SUMMARY
+          echo "- Current coverage: $($linePercent.ToString('F1'))% (meets $($threshold * 100)% threshold)" >> $env:GITHUB_STEP_SUMMARY
+          echo "status=passed" >> $env:GITHUB_OUTPUT
+        }
+      shell: pwsh
+    
+    - name: Comment PR
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const lineRate = parseFloat('${{ steps.coverage.outputs.line-rate }}');
+          const linePercent = (lineRate * 100).toFixed(1);
+          const threshold = 95;
+          const status = '${{ steps.threshold.outputs.status }}';
+          
+          const statusIcon = status === 'passed' ? '✅' : '❌';
+          const statusText = status === 'passed' ? 'PASSED' : 'FAILED';
+          
+          const comment = `## ${statusIcon} Code Coverage Report
+          
+          **Status:** ${statusText}
+          - **Line Coverage:** ${linePercent}%
+          - **Threshold:** ${threshold}%
+          - **Build:** [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ${status === 'failed' ? 
+            '⚠️ **Action Required:** Coverage is below the required threshold. Please add more tests.' : 
+            '🎉 **Great job!** Coverage meets the quality standards.'}
+          
+          ---
+          *Automated coverage report from CI*`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+    
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: artifacts/coverage-report/
+        retention-days: 5
+        
+    - name: Upload Raw Coverage File
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-data
+        path: ${{ env.COVERAGE_FILE }}
+        retention-days: 5
+        
+    - name: Fail if tests failed
+      if: always()
+      run: |
+        if ('${{ steps.test.outcome }}' -eq 'failure') {
+          Write-Output "Tests failed - failing the build"
+          exit 1
+        }
+        Write-Output "Tests passed successfully"
+      shell: pwsh
+        
+    - name: Verify publish_dir exists
+      if: always()
+      shell: bash
+      run: ls -la ./artifacts/coverage-report
+
+    - name: Publish to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v4
+      if: github.ref == 'refs/heads/main'
+      with:
+        deploy_key: ${{ secrets.ACTION_DEPLOY_KEY }}
+        publish_dir: ./artifacts/coverage-report 
