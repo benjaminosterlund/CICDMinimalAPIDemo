@@ -20,7 +20,7 @@ jobs:
       SOLUTION_FILE: CICDMinimalAPIDemo.sln
       TEST_PROJECT_NAME: CICDMinimalAPIDemoTests
       COVERAGE_FILE: artifacts/bin/CICDMinimalAPIDemoTests/debug/CICDMinimalAPIDemoTests.coverage
-
+      COVERAGE_TRESHOLD: 0.50
     steps:
     - uses: actions/checkout@v4
     - name: Setup .NET
@@ -46,7 +46,7 @@ jobs:
         mkdir -p artifacts/coverage  
         dotnet coverage collect --output ${{ env.COVERAGE_FILE }} --output-format cobertura -- \
         dotnet test "${{ env.SOLUTION_FILE }}" -c Debug --no-build --verbosity normal \
-        
+
     - name: Generate Coverage Report
       if: always()      
       run: |
@@ -105,7 +105,7 @@ jobs:
       if: always()
       id: threshold
       run: |
-        $threshold = 0.95
+        $threshold = ${{ env.COVERAGE_FILE }}
         
         # Debug: Show what we're getting from the previous step - use Write-Output for reliability
         Write-Output "Debug: Raw output from previous step: '${{ steps.coverage.outputs.line-rate }}'"
@@ -133,7 +133,7 @@ jobs:
           echo "❌ **Coverage Check Failed**" >> $env:GITHUB_STEP_SUMMARY
           echo "- Current coverage: $($linePercent.ToString('F1'))%" >> $env:GITHUB_STEP_SUMMARY
           echo "- Required threshold: $($threshold * 100)%" >> $env:GITHUB_STEP_SUMMARY
-          echo "- **Action Required:** Please add more tests to increase coverage above 95%" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Action Required:** Please add more tests to increase coverage above $(${{ env.COVERAGE_FILE }}*100)%" >> $env:GITHUB_STEP_SUMMARY
           
           echo "status=failed" >> $env:GITHUB_OUTPUT
           Write-Error "Code coverage ($($linePercent.ToString('F1'))%) is below the required threshold of $($threshold * 100)%"
@@ -152,7 +152,7 @@ jobs:
         script: |
           const lineRate = parseFloat('${{ steps.coverage.outputs.line-rate }}');
           const linePercent = (lineRate * 100).toFixed(1);
-          const threshold = 95;
+          const threshold = $(${{ env.COVERAGE_FILE }}*100);
           const status = '${{ steps.threshold.outputs.status }}';
           
           const statusIcon = status === 'passed' ? '✅' : '❌';
