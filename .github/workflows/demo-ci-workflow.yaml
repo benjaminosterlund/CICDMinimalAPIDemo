@@ -44,8 +44,9 @@ jobs:
       continue-on-error: true
       run: |
         mkdir -p artifacts/coverage  
-        dotnet coverage collect artifacts/bin/${{ env.TEST_PROJECT_NAME }}/debug/${{ env.TEST_PROJECT_NAME }} --output ${{ env.COVERAGE_FILE }} --output-format cobertura --settings eng/tests.runsettings
-
+        dotnet coverage collect --output ${{ env.COVERAGE_FILE }} --output-format cobertura -- \
+        dotnet test "${{ env.SOLUTION_FILE }}" -c Debug --no-build --verbosity normal \
+        
     - name: Generate Coverage Report
       if: always()      
       run: |
