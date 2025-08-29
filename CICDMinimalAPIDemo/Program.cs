@@ -27,4 +27,9 @@ namespace CICDMinimalAPIDemo
         }
         public string GetGreeting() => $"Hello {Name}!";
     }
+
+    public static class MathOperations
+    {
+        public static int Add(int a, int b) => a + b;
+    }
 }
