@@ -105,7 +105,7 @@ jobs:
       if: always()
       id: threshold
       run: |
-        $threshold = ${{ env.COVERAGE_FILE }}
+        $threshold = ${{ env.COVERAGE_TRESHOLD }}
         
         # Debug: Show what we're getting from the previous step - use Write-Output for reliability
         Write-Output "Debug: Raw output from previous step: '${{ steps.coverage.outputs.line-rate }}'"
@@ -133,7 +133,7 @@ jobs:
           echo "❌ **Coverage Check Failed**" >> $env:GITHUB_STEP_SUMMARY
           echo "- Current coverage: $($linePercent.ToString('F1'))%" >> $env:GITHUB_STEP_SUMMARY
           echo "- Required threshold: $($threshold * 100)%" >> $env:GITHUB_STEP_SUMMARY
-          echo "- **Action Required:** Please add more tests to increase coverage above $(${{ env.COVERAGE_FILE }}*100)%" >> $env:GITHUB_STEP_SUMMARY
+          echo "- **Action Required:** Please add more tests to increase coverage above $(${{ env.COVERAGE_TRESHOLD }}*100)%" >> $env:GITHUB_STEP_SUMMARY
           
           echo "status=failed" >> $env:GITHUB_OUTPUT
           Write-Error "Code coverage ($($linePercent.ToString('F1'))%) is below the required threshold of $($threshold * 100)%"
