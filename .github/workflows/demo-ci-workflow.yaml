@@ -20,7 +20,7 @@ jobs:
       SOLUTION_FILE: CICDMinimalAPIDemo.sln
       TEST_PROJECT_NAME: CICDMinimalAPIDemoTests
       COVERAGE_FILE: artifacts/bin/CICDMinimalAPIDemoTests/debug/CICDMinimalAPIDemoTests.coverage
-      COVERAGE_TRESHOLD: 0.50
+      COVERAGE_TRESHOLD: 0.90
     steps:
     - uses: actions/checkout@v4
     - name: Setup .NET
